@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
-import android.util.Log
 import com.dismoi.scout.floating.layout.Bubble
 import com.dismoi.scout.floating.layout.Layout
 import com.dismoi.scout.floating.layout.Message
@@ -78,9 +77,6 @@ class Manager private constructor(private val context: Context) {
     }
 
     fun setTrashLayout(trashLayoutResourceId: Int): Builder {
-      Log.d("Notification", "set trash layout")
-      Log.d("Notification", trashLayoutResourceId.toString())
-
       disMoiManager.trashLayoutResourceId = trashLayoutResourceId
       return this
     }

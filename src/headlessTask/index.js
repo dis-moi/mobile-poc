@@ -125,7 +125,7 @@ const HeadlessTask = async (taskData) => {
   if (taskData.url) {
     if (eventTimes.length === 2) {
       const eventTime = eventTimes[1] - eventTimes[0];
-      if (eventTime < 10000) {
+      if (eventTime < 1000) {
         eventTimes = [];
         return;
       }
@@ -160,8 +160,6 @@ const HeadlessTask = async (taskData) => {
             ).then((response) => response.json())
           )
         );
-        console.log('unique ids');
-        console.log(uniqueIds);
         if (notices.length > 0) {
           const noticesToShow = notices.map((result) => {
             const formattedDate = formatDate(result);
@@ -191,8 +189,6 @@ const HeadlessTask = async (taskData) => {
                 );
               });
               if (packageName === 'com.android.chrome') {
-                console.log('show bubble');
-                console.log(packageName);
                 FloatingModule.initializeBubblesManager().then(() => {
                   FloatingModule.showFloatingDisMoiBubble(
                     10,

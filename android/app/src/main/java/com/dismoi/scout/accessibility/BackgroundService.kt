@@ -23,7 +23,7 @@ class BackgroundService : AccessibilityService() {
   private var _packageName: String? = ""
   val chrome: Chrome = Chrome()
 
-  private val NOTIFICATION_TIMEOUT: Long = 500
+  private val NOTIFICATION_TIMEOUT: Long = 800
 
   private val handler = Handler(Looper.getMainLooper())
   private val runnableCode: Runnable = object : Runnable {
@@ -74,7 +74,11 @@ class BackgroundService : AccessibilityService() {
       Represents the event of changing the content of a window and more specifically 
       the sub-tree rooted at the event's source
     */
-    info.eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED or AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+    info.eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+      AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED or
+      AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED 
+      //or
+      //AccessibilityEvent.TYPE_VIEW_FOCUSED
 
     //AccessibilityEvent.TYPE_WINDOWS_CHANGED or
     /*
@@ -102,18 +106,8 @@ class BackgroundService : AccessibilityService() {
     }
   }
 
-  private fun isWindowChangeEvent(event: AccessibilityEvent): Boolean {
-    return AccessibilityEvent.eventTypeToString(event.eventType).contains("WINDOW")
-  }
-
-  private fun chromeSearchBarEditingIsActivated(info: AccessibilityNodeInfo): Boolean {
-    return info.childCount > 0 &&
-      info.className.toString() == "android.widget.FrameLayout" &&
-      info.getChild(0).className.toString() == "android.widget.EditText"
-  }
-
   fun isLauncherActivated(packageName: String): Boolean {
-    return "com.android.launcher3" == packageName
+    return packageName.contains("launcher")
   }
 
   /*
@@ -135,6 +129,7 @@ class BackgroundService : AccessibilityService() {
           packageName == "com.google.android.googlequicksearchbox" ||
           packageName == "com.android.systemui"
         ) {
+          _eventTime = event.eventTime.toString()
           _packageName = packageName
           _hide = "true"
           handler.post(runnableCode)
@@ -143,6 +138,7 @@ class BackgroundService : AccessibilityService() {
       }
 
       if (isLauncherActivated(packageName)) {
+        _eventTime = event.eventTime.toString()
         _hide = "true"
         _packageName = packageName
         handler.post(runnableCode)
@@ -161,6 +157,7 @@ class BackgroundService : AccessibilityService() {
         ) {
           chrome.captureUrl()
           if (chrome.chromeSearchBarEditingIsActivated()) {
+            _eventTime = event.eventTime.toString()
             _hide = "true"
             handler.post(runnableCode)
             return
