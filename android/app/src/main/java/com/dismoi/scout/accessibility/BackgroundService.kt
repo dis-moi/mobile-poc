@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.*
 import android.provider.Settings.canDrawOverlays
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.annotation.RequiresApi
@@ -24,6 +25,8 @@ class BackgroundService : AccessibilityService() {
   val chrome: Chrome = Chrome()
 
   private val NOTIFICATION_TIMEOUT: Long = 500
+
+  private val TAG = "Accessibility"
 
   private val handler = Handler(Looper.getMainLooper())
   private val runnableCode: Runnable = object : Runnable {
@@ -83,7 +86,7 @@ class BackgroundService : AccessibilityService() {
      */
 
     info.feedbackType = AccessibilityServiceInfo.FEEDBACK_VISUAL
-    info.flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+    info.flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
 
     /* 
       The minimal period in milliseconds between two accessibility events of 
@@ -116,19 +119,150 @@ class BackgroundService : AccessibilityService() {
     return "com.android.launcher3" == packageName
   }
 
+  @RequiresApi(Build.VERSION_CODES.O)
+  private fun findByClassName(node: AccessibilityNodeInfo, className: String, level: Int = 0): AccessibilityNodeInfo? {
+    node.refresh()
+    val count = node.childCount
+    for (i in 0 until count) {
+      val child = node.getChild(i)
+      if (child != null) {
+        if (child.className.toString() == className) {
+          return child
+        }
+        val foundInChild = findByClassName(child, className, level + 1)
+        if (foundInChild != null) return foundInChild
+      }
+    }
+    return null
+  }
+
+  @RequiresApi(Build.VERSION_CODES.P)
+  private fun findHeading(node: AccessibilityNodeInfo, level: Int = 0): AccessibilityNodeInfo? {
+    node.refresh()
+    val count = node.childCount
+    for (i in 0 until count) {
+      val child = node.getChild(i)
+      if (child != null) {
+        if (child?.isHeading) {
+          return child
+        }
+        val foundInChild = findHeading(child, level + 1)
+        if (foundInChild != null) return foundInChild
+      }
+    }
+    return null
+  }
+
+
+  @RequiresApi(Build.VERSION_CODES.O)
+  private fun findById(node: AccessibilityNodeInfo, id: String, level: Int = 0): AccessibilityNodeInfo? {
+    val count = node.childCount
+    for (i in 0 until count) {
+      val child = node.getChild(i)
+
+      if (child != null) {
+        if (child?.viewIdResourceName?.toString() == id) {
+          return child
+        }
+        val foundInChild = findById(child, id, level + 1)
+        if (foundInChild != null) return foundInChild
+      }
+    }
+    return null
+  }
+
+
+  @RequiresApi(Build.VERSION_CODES.O)
+  private fun findTexts(node: AccessibilityNodeInfo, level: Int = 0): String {
+    val count = node.childCount
+    var texts = ""
+    for (i in 0 until count) {
+      val child = node.getChild(i)
+
+      texts += child.text?.toString() ?: child.contentDescription?.toString() ?: ""
+      texts += "\n" + findTexts(child, level + 1) + "\n"
+    }
+    return texts
+  }
+
+  @RequiresApi(Build.VERSION_CODES.O)
+  private fun findWebview(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+    return findByClassName(node, "android.webkit.WebView")
+  }
+
+  @RequiresApi(30)
+  private fun logHierarchy(node: AccessibilityNodeInfo, level: Int = 0) {
+    node.refresh()
+    val id = node.viewIdResourceName
+    val text = node.text?.toString()
+    val content = node.contentDescription?.toString()
+    val avExtras = node.availableExtraData?.joinToString(", ")
+    val count = node.childCount
+
+    val extras = node.extras
+    val extrasList = mutableListOf<String>()
+    for (key in extras.keySet()) {
+      extrasList.add("$key: ${extras.get(key)}")
+    }
+    val allExtras = extrasList.joinToString(" / ")
+
+    Log.d(TAG, "${"  ".repeat(level)} ($level) " +
+      "className: ${node.className}, " +
+      "id: ${id ?: "NO ID"}, " +
+      "text: $text, " +
+      "content: $content, " +
+      "extras: $allExtras, " +
+      "avExtras: $avExtras, " +
+      "hint: ${node.hintText}, " +
+      "heading: ${node.isHeading}, " +
+      "inputType: ${node.inputType}, " +
+      "state: ${node.stateDescription}"
+    )
+
+    for (i in 0 until count)  {
+      val child = node.getChild(i)
+      if (child != null) {
+        logHierarchy(child, level + 1)
+      }
+    }
+  }
+
+  private fun getTextAndContent(node: AccessibilityNodeInfo?): String? {
+    return if (node != null)  "${node.text?.toString()} / ${node.contentDescription?.toString()}" else null
+  }
+
   /*
     This method is called back by the system when it detects an 
     AccessibilityEvent that matches the event filtering parameters 
     specified by your accessibility service
    */
-  @RequiresApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
+  @RequiresApi(30)
   override fun onAccessibilityEvent(event: AccessibilityEvent) {
-    if (rootInActiveWindow == null) {
+    Log.d(TAG, "Event : ${getEventType(event)}, Package: ${event.packageName}, Source: ${event.source?.className.toString()}")
+
+    val root = rootInActiveWindow
+
+    if (root == null) {
       return
     }
 
-    if (overlayIsActivated(applicationContext)) {
-      val packageName = event.packageName.toString()
+    if (root.packageName?.toString() == "com.android.chrome" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && root != null) {
+      Log.d(TAG, "Active window packageName : ${root.packageName}, className: ${root.className}")
+    }
+
+    // Temporary demo code specific to Amazon
+    val webview = findWebview(root)
+    if (webview != null) {
+      val titleExpanderContent = findById(webview, "titleExpanderContent")
+      if (titleExpanderContent != null) {
+        val titleView = findHeading(titleExpanderContent)
+        val title = titleView?.text ?: titleView?.contentDescription
+        Log.d(TAG, "Found Amazon page title : $title")
+      }
+    }
+
+    if (overlayIsActivated(applicationContext)) {applicationContext
+      val packageName = event.packageName?.toString() ?: "NO PACKAGE"
 
       if (getEventType(event) == "TYPE_WINDOW_STATE_CHANGED" && packageName != "com.android.chrome") {
         if (packageName.contains("com.google.android.inputmethod") ||
